@@ -28,11 +28,18 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
                                    int permissionCount, int mrcUser,
                                    int mrcPermission);
 
-// TODO: Modify the function signature
-void formRoleProcedure(int v, int *U, int *P, int **uaMatrix, int **paMatrix);
+void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
+
+void modifyUA(int **uaMatrix, int *U, int userCount, int roleCount);
+
+void modifyPA(int **paMatrix, int *P, int permissionCount, int roleCount);
+
+void formRoleProcedure(int v, int *U, int *P, int **uaMatrix, int **paMatrix,
+                       int userCount, int permissionCount, int *roleCount);
 
 void dualFormRoleProcedure(int v, int *U, int *P, int **uaMatrix,
-                           int **paMatrix);
+                           int **paMatrix, int userCount, int permissionCount,
+                           int *roleCount);
 
 int main() {
   char upaFile[MAX_FILE_NAME_SIZE];
@@ -221,6 +228,8 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
   }
   int **UC = copyMatrix(upaMatrix, userCount, permissionCount);
 
+  int roleCount = 0;
+
   // Phase 1
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
@@ -231,10 +240,12 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
         int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
 
         if (vertex < userCount) {
-          formRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+          formRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                            permissionCount, &roleCount);
         } else if (vertex >= userCount &&
                    vertex < userCount + permissionCount) {
-          dualFormRoleProcedure(vertex - userCount, U, P, uaMatrix, paMatrix);
+          dualFormRoleProcedure(vertex - userCount, U, P, uaMatrix, paMatrix,
+                                userCount, permissionCount, &roleCount);
         }
 
         free(U);
@@ -251,10 +262,12 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
         int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
 
         if (vertex < userCount) {
-          formRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+          formRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                            permissionCount, &roleCount);
         } else if (vertex >= userCount &&
                    vertex < userCount + permissionCount) {
-          dualFormRoleProcedure(vertex - userCount, U, P, uaMatrix, paMatrix);
+          dualFormRoleProcedure(vertex - userCount, U, P, uaMatrix, paMatrix,
+                                userCount, permissionCount, &roleCount);
         }
 
         free(U);
@@ -284,9 +297,11 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
             }
           }
           if (condition) {
-            formRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+            formRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                              permissionCount, &roleCount);
           } else {
-            dualFormRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+            dualFormRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                                  permissionCount, &roleCount);
           }
         }
 
@@ -315,9 +330,11 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
             }
           }
           if (condition) {
-            formRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+            formRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                              permissionCount, &roleCount);
           } else {
-            dualFormRoleProcedure(vertex, U, P, uaMatrix, paMatrix);
+            dualFormRoleProcedure(vertex, U, P, uaMatrix, paMatrix, userCount,
+                                  permissionCount, &roleCount);
           }
         }
 
@@ -332,9 +349,35 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
   freeMatrix(UC, userCount);
 }
 
+void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
+  for (int i = 0; i < userCount; i++) {
+    if (U[i] == 1) {
+      for (int j = 0; j < permissionCount; j++) {
+        if (P[j] == 1) {
+          UC[i][j] = 0;
+        }
+      }
+    }
+  }
+}
+
+void modifyUA(int **uaMatrix, int *U, int userCount, int roleCount) {
+  for (int i = 0; i < userCount; i++) {
+    uaMatrix[i][roleCount - 1] = U[i];
+  }
+}
+
+void modifyPA(int **paMatrix, int *P, int permissionCount, int roleCount) {
+  for (int j = 0; j < permissionCount; j++) {
+    paMatrix[j][roleCount - 1] = P[j];
+  }
+}
+
 // TODO: Implement the function
-void formRoleProcedure(int v, int *U, int *P, int **uaMatrix, int **paMatrix) {}
+void formRoleProcedure(int v, int *U, int *P, int **uaMatrix, int **paMatrix,
+                       int userCount, int permissionCount, int *roleCount) {}
 
 // TODO: Implement the function
 void dualFormRoleProcedure(int v, int *U, int *P, int **uaMatrix,
-                           int **paMatrix) {}
+                           int **paMatrix, int userCount, int permissionCount,
+                           int *roleCount) {}
