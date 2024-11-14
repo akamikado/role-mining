@@ -24,9 +24,9 @@ int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount);
 int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
                                               int permissionCount);
 
-void concurrentProcessingFramework(int **upaMatrix, int userCount,
-                                   int permissionCount, int mrcUser,
-                                   int mrcPermission);
+int concurrentProcessingFramework(int **upaMatrix, int userCount,
+                                  int permissionCount, int mrcUser,
+                                  int mrcPermission);
 
 void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
 
@@ -57,10 +57,18 @@ int main() {
   fclose(f);
 
   int mrcUser, mrcPermission;
-  scanf("%d %d", &mrcUser, &mrcPermission);
 
-  concurrentProcessingFramework(upaMatrix, userCount, permissionCount, mrcUser,
-                                mrcPermission);
+  printf("Enter the value of the role-usage cardinality constraint: ");
+  scanf("%d", &mrcUser);
+
+  printf("Enter the value of the permission-distribution cardinality "
+         "constraint: ");
+  scanf("%d", &mrcPermission);
+
+  int roleCount = concurrentProcessingFramework(
+      upaMatrix, userCount, permissionCount, mrcUser, mrcPermission);
+
+  printf("Number of roles = %d\n", roleCount);
 
   freeMatrix(upaMatrix, userCount);
 }
@@ -206,9 +214,9 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
 }
 
 // Alogrithm 4
-void concurrentProcessingFramework(int **upaMatrix, int userCount,
-                                   int permissionCount, int mrcUser,
-                                   int mrcPerm) {
+int concurrentProcessingFramework(int **upaMatrix, int userCount,
+                                  int permissionCount, int mrcUser,
+                                  int mrcPerm) {
   int userRoleCount[userCount];
   for (int i = 0; i < userCount; i++) {
     userRoleCount[i] = 0;
@@ -347,6 +355,8 @@ void concurrentProcessingFramework(int **upaMatrix, int userCount,
   freeMatrix(uaMatrix, userCount);
   freeMatrix(paMatrix, permissionCount);
   freeMatrix(UC, userCount);
+
+  return roleCount;
 }
 
 void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
