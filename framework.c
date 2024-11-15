@@ -30,7 +30,7 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
 
 int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   int permissionCount, int mrcUser,
-                                  int mrcPermission);
+                                  int mrcPermission, char *upaFile);
 
 void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
 
@@ -73,7 +73,7 @@ int main() {
   scanf("%d", &mrcPermission);
 
   int roleCount = concurrentProcessingFramework(
-      upaMatrix, userCount, permissionCount, mrcUser, mrcPermission);
+      upaMatrix, userCount, permissionCount, mrcUser, mrcPermission, upaFile);
 
   printf("Number of roles = %d\n", roleCount);
 
@@ -251,8 +251,8 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
 
 // Alogrithm 4
 int concurrentProcessingFramework(int **upaMatrix, int userCount,
-                                  int permissionCount, int mrcUser,
-                                  int mrcPerm) {
+                                  int permissionCount, int mrcUser, int mrcPerm,
+                                  char *upaFile) {
   int userRoleCount[userCount];
   for (int i = 0; i < userCount; i++) {
     userRoleCount[i] = 0;
@@ -400,6 +400,13 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
     }
   }
 
+  char uaFile[128], paFile[128];
+  sprintf(uaFile, "%s_UA.txt", upaFile);
+  sprintf(paFile, "%s_PA.txt", upaFile);
+
+  writeMatrixToFile(uaMatrix, userCount, roleCount, uaFile);
+  writeMatrixTransposeToFile(paMatrix, permissionCount, roleCount, paFile);
+
   freeMatrix(uaMatrix, userCount);
   freeMatrix(paMatrix, permissionCount);
   freeMatrix(UC, userCount);
@@ -475,7 +482,6 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
   modifyPA(paMatrix, P, permissionCount, *roleCount);
 }
 
-// TODO: Implement the function
 void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int mrcUser, int mrcPerm, int *userRoleCount,
                            int *permRoleCount, int **uaMatrix, int **paMatrix,
