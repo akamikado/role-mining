@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define MAX_FILE_NAME_SIZE 128
-#define MAX_ROLES 1000
+#define MAX_ROLES 2500
 
 FILE *openFile(char *fileName, char *mode);
+
+char *getDatasetName(char *fileName);
 
 void writeMatrixToFile(int **matrix, int rows, int cols, char *fileName);
 
@@ -30,13 +33,17 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
 
 int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   int permissionCount, int mrcUser,
-                                  int mrcPermission, char *upaFile);
+                                  int mrcPermission, char *dataset);
 
 void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
 
-void modifyUA(int **uaMatrix, int *U, int userCount, int roleCount);
+int uniqueRole(int *role, int **matrix, int rows, int cols);
 
-void modifyPA(int **paMatrix, int *P, int permissionCount, int roleCount);
+int isSetEmpty(int *a, int size);
+
+void addRoletoUA(int **uaMatrix, int *U, int userCount, int roleCount);
+
+void addRoletoPA(int **paMatrix, int *P, int permissionCount, int roleCount);
 
 void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
                        int mrcPerm, int *userRoleCount, int *permRoleCount,
@@ -63,6 +70,8 @@ int main() {
 
   fclose(f);
 
+  char *dataset = getDatasetName(upaFile);
+
   int mrcUser, mrcPermission;
 
   printf("Enter the value of the role-usage cardinality constraint: ");
@@ -73,11 +82,12 @@ int main() {
   scanf("%d", &mrcPermission);
 
   int roleCount = concurrentProcessingFramework(
-      upaMatrix, userCount, permissionCount, mrcUser, mrcPermission, upaFile);
+      upaMatrix, userCount, permissionCount, mrcUser, mrcPermission, dataset);
 
   printf("Number of roles = %d\n", roleCount);
 
   freeMatrix(upaMatrix, userCount);
+  free(dataset);
 }
 
 FILE *openFile(char *fileName, char *mode) {
@@ -87,6 +97,22 @@ FILE *openFile(char *fileName, char *mode) {
     exit(1);
   }
   return f;
+}
+
+char *getDatasetName(char *fileName) {
+  const char *token = strrchr(fileName, '.');
+  if (!token || token == fileName) {
+    return strdup(fileName);
+  }
+
+  size_t length = token - fileName;
+
+  char *datasetName = (char *)malloc(length + 1);
+  if (datasetName) {
+    strncpy(datasetName, fileName, length);
+    datasetName[length] = '\0';
+  }
+  return datasetName;
 }
 
 void writeMatrixToFile(int **matrix, int rows, int cols, char *fileName) {
@@ -124,6 +150,9 @@ int **readUPAMatrix(FILE *f, int userCount, int permissionCount) {
   int **upaMatrix = (int **)malloc(userCount * sizeof(int *));
   for (int i = 0; i < userCount; i++) {
     upaMatrix[i] = (int *)malloc(permissionCount * sizeof(int));
+    for (int j = 0; j < permissionCount; j++) {
+      upaMatrix[i][j] = 0;
+    }
   }
 
   int i, j;
@@ -135,11 +164,11 @@ int **readUPAMatrix(FILE *f, int userCount, int permissionCount) {
   return upaMatrix;
 }
 
-void freeMatrix(int **upaMatrix, int userCount) {
-  for (int i = 0; i < userCount; i++) {
-    free(upaMatrix[i]);
+void freeMatrix(int **matrix, int rows) {
+  for (int i = 0; i < rows; i++) {
+    free(matrix[i]);
   }
-  free(upaMatrix);
+  free(matrix);
 }
 
 int **copyMatrix(int **matrix, int rows, int cols) {
@@ -252,7 +281,7 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
 // Alogrithm 4
 int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   int permissionCount, int mrcUser, int mrcPerm,
-                                  char *upaFile) {
+                                  char *dataset) {
   int userRoleCount[userCount];
   for (int i = 0; i < userCount; i++) {
     userRoleCount[i] = 0;
@@ -265,10 +294,16 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   uaMatrix = (int **)malloc(userCount * sizeof(int *));
   for (int i = 0; i < userCount; i++) {
     uaMatrix[i] = (int *)malloc(MAX_ROLES * sizeof(int));
+    for (int j = 0; j < MAX_ROLES; j++) {
+      uaMatrix[i][j] = 0;
+    }
   }
   paMatrix = (int **)malloc(permissionCount * sizeof(int *));
   for (int i = 0; i < permissionCount; i++) {
     paMatrix[i] = (int *)malloc(MAX_ROLES * sizeof(int));
+    for (int j = 0; j < MAX_ROLES; j++) {
+      paMatrix[i][j] = 0;
+    }
   }
   int **UC = copyMatrix(upaMatrix, userCount, permissionCount);
 
@@ -279,7 +314,13 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
     for (int j = 0; j < permissionCount; j++) {
       if (UC[i][j] == 1 && userRoleCount[i] < mrcUser - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
+        for (int k = 0; k < userCount; k++) {
+          U[k] = 0;
+        }
         int *P = (int *)malloc(permissionCount * sizeof(int));
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
 
         int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
 
@@ -304,8 +345,13 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
     for (int i = 0; i < userCount; i++) {
       if (UC[i][j] == 1 && permRoleCount[j] < mrcPerm - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
+        for (int k = 0; k < userCount; k++) {
+          U[k] = 0;
+        }
         int *P = (int *)malloc(permissionCount * sizeof(int));
-
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
         int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
 
         if (vertex < userCount) {
@@ -331,7 +377,13 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
     for (int j = 0; j < permissionCount; j++) {
       if (UC[i][j] == 1 && userRoleCount[i] < mrcUser - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
+        for (int k = 0; k < userCount; k++) {
+          U[k] = 0;
+        }
         int *P = (int *)malloc(permissionCount * sizeof(int));
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
 
         int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
                                                                permissionCount);
@@ -367,7 +419,13 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
     for (int i = 0; i < userCount; i++) {
       if (UC[i][j] == 1 && permRoleCount[j] < mrcPerm - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
+        for (int k = 0; k < userCount; k++) {
+          U[k] = 0;
+        }
         int *P = (int *)malloc(permissionCount * sizeof(int));
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
 
         int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
                                                                permissionCount);
@@ -401,8 +459,8 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   }
 
   char uaFile[128], paFile[128];
-  sprintf(uaFile, "%s_UA.txt", upaFile);
-  sprintf(paFile, "%s_PA.txt", upaFile);
+  sprintf(uaFile, "%s_UA.txt", dataset);
+  sprintf(paFile, "%s_PA.txt", dataset);
 
   writeMatrixToFile(uaMatrix, userCount, roleCount, uaFile);
   writeMatrixTransposeToFile(paMatrix, permissionCount, roleCount, paFile);
@@ -426,13 +484,38 @@ void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
   }
 }
 
-void modifyUA(int **uaMatrix, int *U, int userCount, int roleCount) {
+int uniqueRole(int *role, int **matrix, int rows, int cols) {
+  for (int j = 0; j < cols; j++) {
+    int isDuplicate = 1;
+    for (int i = 0; i < rows; i++) {
+      if (role[i] != matrix[i][j]) {
+        isDuplicate = 0;
+        break;
+      }
+    }
+    if (isDuplicate) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int isSetEmpty(int *a, int size) {
+  for (int i = 0; i < size; i++) {
+    if (a[i] == 1) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+void addRoletoUA(int **uaMatrix, int *U, int userCount, int roleCount) {
   for (int i = 0; i < userCount; i++) {
     uaMatrix[i][roleCount - 1] = U[i];
   }
 }
 
-void modifyPA(int **paMatrix, int *P, int permissionCount, int roleCount) {
+void addRoletoPA(int **paMatrix, int *P, int permissionCount, int roleCount) {
   for (int j = 0; j < permissionCount; j++) {
     paMatrix[j][roleCount - 1] = P[j];
   }
@@ -477,9 +560,16 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
   freeMatrix(transposeV, permissionCount);
   freeMatrix(transposeUC, permissionCount);
 
+  if (isSetEmpty(P, permissionCount) ||
+      !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
+    return;
+  }
+
+  *roleCount += 1;
+
   modifyUC(UC, U, P, userCount, permissionCount);
-  modifyUA(uaMatrix, U, userCount, *roleCount);
-  modifyPA(paMatrix, P, permissionCount, *roleCount);
+  addRoletoUA(uaMatrix, U, userCount, *roleCount);
+  addRoletoPA(paMatrix, P, permissionCount, *roleCount);
 }
 
 void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
@@ -513,7 +603,14 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
     }
   }
 
+  if (isSetEmpty(U, userCount) ||
+      !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
+    return;
+  }
+
+  *roleCount += 1;
+
   modifyUC(UC, U, P, userCount, permissionCount);
-  modifyUA(uaMatrix, U, userCount, *roleCount);
-  modifyPA(paMatrix, P, permissionCount, *roleCount);
+  addRoletoUA(uaMatrix, U, userCount, *roleCount);
+  addRoletoPA(paMatrix, P, permissionCount, *roleCount);
 }
