@@ -19,6 +19,10 @@ int **copyMatrix(int **matrix, int rows, int cols);
 
 int **transposeMatrix(int **matrix, int rows, int cols);
 
+int isSubset(int *uc, int *p, int size);
+
+int hasElement(int *uc, int *p, int size);
+
 int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount);
 
 int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
@@ -147,6 +151,24 @@ int **copyMatrix(int **matrix, int rows, int cols) {
     }
   }
   return copy;
+}
+
+int isSubset(int *uc, int *p, int size) {
+  for (int i = 0; i < size; i++) {
+    if (uc[i] != 1 && p[i] == 1) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int hasElement(int *uc, int *p, int size) {
+  for (int i = 0; i < size; i++) {
+    if (uc[i] == 1 && p[i] == 1) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount) {
@@ -403,61 +425,35 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
                        int mrcPerm, int *userRoleCount, int *permRoleCount,
                        int **uaMatrix, int **paMatrix, int userCount,
                        int permissionCount, int *roleCount) {
-                        
-  U[v]=1;
-  UserRoleCount[v] += 1;
-  for(int i=0 ;i < permissionCount;i++)
-  {
+
+  U[v] = 1;
+  userRoleCount[v] += 1;
+  for (int i = 0; i < permissionCount; i++) {
     int p = UC[v][i];
-    if (p == 1 && permRoleCount[i] < mrcPerm - 1)
-    {
-      P[i]=1;
-      PermRoleCount[i]+=1;
+    if (p == 1 && permRoleCount[i] < mrcPerm - 1) {
+      P[i] = 1;
+      permRoleCount[i] += 1;
     }
-    
   }
 
-  for(int i=0;i < userRoleCount[i];i++)
-  {
-      if(i!=v && UserRoleCount[i]< mrcUser-1 && isSubset(P,V[i],permCount) && hasElement(UC[i],P,permCount))
-      {
-        U[i]=1;
-        UserRoleCount[i] += 1;
-      }
+  for (int i = 0; i < userRoleCount[i]; i++) {
+    if (i != v && userRoleCount[i] < mrcUser - 1 &&
+        isSubset(P, V[i], permissionCount) &&
+        hasElement(UC[i], P, permissionCount)) {
+      U[i] = 1;
+      userRoleCount[i] += 1;
+    }
 
-      else 
-      {
-        if(UserRoleCount[i]<mrcUser-1 && isSubset(P,V[i],permCount) && isSubset(UC[i],P,permCount))
-        {
-          U[i]=1;
-          UserRoleCount[i] += 1;
-        }
-      }
-  }
-  int isSubset(int *uc, int *p, int size)
-  {
-    for(int i=0;i<size;i++)
-    {
-      if(uc[i]!=1 && p[i]==1)
-      {
-        return 0;
+    else {
+      if (userRoleCount[i] < mrcUser - 1 &&
+          isSubset(P, V[i], permissionCount) &&
+          isSubset(UC[i], P, permissionCount)) {
+        U[i] = 1;
+        userRoleCount[i] += 1;
       }
     }
-     return 1;
   }
-
-  int hasElement(int *uc, int *p, int size) {
-    for (int i = 0; i < size; i++) {
-        if (uc[i] == 1 && p[i] == 1) {
-            return 1;
-        }
-    }
-    return 0;
 }
-
-
-
-                       }
 
 // TODO: Implement the function
 void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
