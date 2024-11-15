@@ -153,7 +153,7 @@ int **copyMatrix(int **matrix, int rows, int cols) {
   return copy;
 }
 
-int isSubset(int *uc, int *p, int size) {
+int isSubset(int **uc, int *p, int rowSize, int colSize, int type) {
   for (int i = 0; i < size; i++) {
     if (uc[i] != 1 && p[i] == 1) {
       return 0;
@@ -435,7 +435,7 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
       permRoleCount[i] += 1;
     }
   }
-
+  
   for (int i = 0; i < userRoleCount[i]; i++) {
     if (i != v && userRoleCount[i] < mrcUser - 1 &&
         isSubset(P, V[i], permissionCount) &&
@@ -460,4 +460,32 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int mrcUser, int mrcPerm, int *userRoleCount,
                            int *permRoleCount, int **uaMatrix, int **paMatrix,
                            int userCount, int permissionCount, int *roleCount) {
+
+  P[v] = 1;
+  permRoleCount[v] += 1;
+  for (int i = 0; i < userCount; i++) {
+    int p = UC[i][v];
+    if (p == 1 && userRoleCount[i] < mrcUser - 1) {
+      U[i] = 1;
+      userRoleCount[i] += 1;
+    }
+  }
+
+   for (int i = 0; i < permRoleCount[i]; i++) {
+    if (i != v && permRoleCount[i] < mrcPerm - 1 &&
+        isSubset(U, V[i], userCount) &&
+        hasElement(UC[i], U, userCount)) {
+      P[i] = 1;
+      permRoleCount[i] += 1;
+    }
+
+    else {
+      if (permRoleCount[i] < mrcPerm - 1 &&
+          isSubset(U, V[i], userCount) &&
+          isSubset(UC[i], U, userCount)) {
+        P[i] = 1;
+        permRoleCount[i] += 1;
+      }
+    }
+  }
 }
