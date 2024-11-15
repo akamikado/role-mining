@@ -153,18 +153,29 @@ int **copyMatrix(int **matrix, int rows, int cols) {
   return copy;
 }
 
-int isSubset(int **uc, int *p, int rowSize, int colSize, int type) {
+int **transposeMatrix(int **matrix, int rows, int cols) {
+  int **transpose = (int **)malloc(cols * sizeof(int *));
+  for (int i = 0; i < cols; i++) {
+    transpose[i] = (int *)malloc(rows * sizeof(int));
+    for (int j = 0; j < rows; j++) {
+      transpose[i][j] = matrix[j][i];
+    }
+  }
+  return transpose;
+}
+
+int isSubset(int *a, int *b, int size) {
   for (int i = 0; i < size; i++) {
-    if (uc[i] != 1 && p[i] == 1) {
+    if (a[i] != 1 && b[i] == 1) {
       return 0;
     }
   }
   return 1;
 }
 
-int hasElement(int *uc, int *p, int size) {
+int hasElement(int *a, int *b, int size) {
   for (int i = 0; i < size; i++) {
-    if (uc[i] == 1 && p[i] == 1) {
+    if (a[i] == 1 && b[i] == 1) {
       return 1;
     }
   }
@@ -420,7 +431,6 @@ void modifyPA(int **paMatrix, int *P, int permissionCount, int roleCount) {
   }
 }
 
-// TODO: Implement the function
 void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
                        int mrcPerm, int *userRoleCount, int *permRoleCount,
                        int **uaMatrix, int **paMatrix, int userCount,
@@ -435,24 +445,34 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
       permRoleCount[i] += 1;
     }
   }
-  
+
+  int **transposeV = transposeMatrix(V, userCount, permissionCount);
+  int **transposeUC = transposeMatrix(UC, userCount, permissionCount);
+
   for (int i = 0; i < userRoleCount[i]; i++) {
     if (i != v && userRoleCount[i] < mrcUser - 1 &&
-        isSubset(P, V[i], permissionCount) &&
-        hasElement(UC[i], P, permissionCount)) {
+        isSubset(P, transposeV[i], permissionCount) &&
+        hasElement(transposeUC[i], P, permissionCount)) {
       U[i] = 1;
       userRoleCount[i] += 1;
     }
 
     else {
       if (userRoleCount[i] < mrcUser - 1 &&
-          isSubset(P, V[i], permissionCount) &&
-          isSubset(UC[i], P, permissionCount)) {
+          isSubset(P, transposeV[i], permissionCount) &&
+          isSubset(transposeUC[i], P, permissionCount)) {
         U[i] = 1;
         userRoleCount[i] += 1;
       }
     }
   }
+
+  freeMatrix(transposeV, permissionCount);
+  freeMatrix(transposeUC, permissionCount);
+
+  modifyUC(UC, U, P, userCount, permissionCount);
+  modifyUA(uaMatrix, U, userCount, *roleCount);
+  modifyPA(paMatrix, P, permissionCount, *roleCount);
 }
 
 // TODO: Implement the function
@@ -471,21 +491,23 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
     }
   }
 
-   for (int i = 0; i < permRoleCount[i]; i++) {
+  for (int i = 0; i < permRoleCount[i]; i++) {
     if (i != v && permRoleCount[i] < mrcPerm - 1 &&
-        isSubset(U, V[i], userCount) &&
-        hasElement(UC[i], U, userCount)) {
+        isSubset(U, V[i], userCount) && hasElement(UC[i], U, userCount)) {
       P[i] = 1;
       permRoleCount[i] += 1;
     }
 
     else {
-      if (permRoleCount[i] < mrcPerm - 1 &&
-          isSubset(U, V[i], userCount) &&
+      if (permRoleCount[i] < mrcPerm - 1 && isSubset(U, V[i], userCount) &&
           isSubset(UC[i], U, userCount)) {
         P[i] = 1;
         permRoleCount[i] += 1;
       }
     }
   }
+
+  modifyUC(UC, U, P, userCount, permissionCount);
+  modifyUA(uaMatrix, U, userCount, *roleCount);
+  modifyPA(paMatrix, P, permissionCount, *roleCount);
 }
