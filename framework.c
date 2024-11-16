@@ -157,7 +157,7 @@ int **readUPAMatrix(FILE *f, int userCount, int permissionCount) {
 
   int i, j;
 
-  while (fscanf(f, "%d %d", &i, &j) != EOF) {
+  while (fscanf(f, " %d %d", &i, &j) != EOF) {
     upaMatrix[i - 1][j - 1] = 1;
   }
 
@@ -195,7 +195,7 @@ int **transposeMatrix(int **matrix, int rows, int cols) {
 
 int isSubset(int *a, int *b, int size) {
   for (int i = 0; i < size; i++) {
-    if (a[i] != 1 && b[i] == 1) {
+    if (a[i] == 1 && b[i] != 1) {
       return 0;
     }
   }
@@ -375,7 +375,7 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   // Phase 2
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1 && userRoleCount[i] < mrcUser - 1) {
+      if (UC[i][j] == 1 && userRoleCount[i] == mrcUser - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
         for (int k = 0; k < userCount; k++) {
           U[k] = 0;
@@ -402,7 +402,21 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
             formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
                               userRoleCount, permRoleCount, uaMatrix, paMatrix,
                               userCount, permissionCount, &roleCount);
-          } else {
+          }
+
+        } else if (vertex >= userCount &&
+                   vertex < userCount + permissionCount) {
+          vertex -= userCount;
+          int condition = 1;
+          for (int k = 0; k < userCount; k++) {
+            if (UC[k][vertex] == 1) {
+              U[k] = 1;
+              if (userRoleCount[k] > mrcUser - 1) {
+                condition = 0;
+              }
+            }
+          }
+          if (condition) {
             dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
                                   userRoleCount, permRoleCount, uaMatrix,
                                   paMatrix, userCount, permissionCount,
@@ -417,7 +431,7 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   }
   for (int j = 0; j < permissionCount; j++) {
     for (int i = 0; i < userCount; i++) {
-      if (UC[i][j] == 1 && permRoleCount[j] < mrcPerm - 1) {
+      if (UC[i][j] == 1 && permRoleCount[j] == mrcPerm - 1) {
         int *U = (int *)malloc(userCount * sizeof(int));
         for (int k = 0; k < userCount; k++) {
           U[k] = 0;
@@ -444,7 +458,19 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
             formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
                               userRoleCount, permRoleCount, uaMatrix, paMatrix,
                               userCount, permissionCount, &roleCount);
-          } else {
+          }
+        } else {
+          vertex -= userCount;
+          int condition = 1;
+          for (int k = 0; k < userCount; k++) {
+            if (UC[k][vertex] == 1) {
+              U[k] = 1;
+              if (userRoleCount[k] > mrcUser - 1) {
+                condition = 0;
+              }
+            }
+          }
+          if (condition) {
             dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
                                   userRoleCount, permRoleCount, uaMatrix,
                                   paMatrix, userCount, permissionCount,
@@ -457,6 +483,8 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
       }
     }
   }
+
+  // TODO: Check if roles did not meet the constraints
 
   char uaFile[128], paFile[128];
   sprintf(uaFile, "%s_UA.txt", dataset);
@@ -536,29 +564,19 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
     }
   }
 
-  int **transposeV = transposeMatrix(V, userCount, permissionCount);
-  int **transposeUC = transposeMatrix(UC, userCount, permissionCount);
-
-  for (int i = 0; i < userRoleCount[i]; i++) {
+  for (int i = 0; i < userCount; i++) {
     if (i != v && userRoleCount[i] < mrcUser - 1 &&
-        isSubset(P, transposeV[i], permissionCount) &&
-        hasElement(transposeUC[i], P, permissionCount)) {
+        isSubset(P, V[i], permissionCount) &&
+        hasElement(UC[i], P, permissionCount)) {
+      U[i] = 1;
+      userRoleCount[i] += 1;
+    } else if (userRoleCount[i] == mrcUser - 1 &&
+               isSubset(P, V[i], permissionCount) &&
+               isSubset(UC[i], P, permissionCount)) {
       U[i] = 1;
       userRoleCount[i] += 1;
     }
-
-    else {
-      if (userRoleCount[i] < mrcUser - 1 &&
-          isSubset(P, transposeV[i], permissionCount) &&
-          isSubset(transposeUC[i], P, permissionCount)) {
-        U[i] = 1;
-        userRoleCount[i] += 1;
-      }
-    }
   }
-
-  freeMatrix(transposeV, permissionCount);
-  freeMatrix(transposeUC, permissionCount);
 
   if (isSetEmpty(P, permissionCount) ||
       !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
@@ -587,21 +605,25 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
     }
   }
 
-  for (int i = 0; i < permRoleCount[i]; i++) {
+  int **transposeV = transposeMatrix(V, userCount, permissionCount);
+  int **transposeUC = transposeMatrix(UC, userCount, permissionCount);
+
+  for (int i = 0; i < permissionCount; i++) {
     if (i != v && permRoleCount[i] < mrcPerm - 1 &&
-        isSubset(U, V[i], userCount) && hasElement(UC[i], U, userCount)) {
+        isSubset(U, transposeV[i], userCount) &&
+        hasElement(transposeUC[i], U, userCount)) {
+      P[i] = 1;
+      permRoleCount[i] += 1;
+    } else if (permRoleCount[i] == mrcPerm - 1 &&
+               isSubset(U, transposeV[i], userCount) &&
+               isSubset(transposeUC[i], U, userCount)) {
       P[i] = 1;
       permRoleCount[i] += 1;
     }
-
-    else {
-      if (permRoleCount[i] < mrcPerm - 1 && isSubset(U, V[i], userCount) &&
-          isSubset(UC[i], U, userCount)) {
-        P[i] = 1;
-        permRoleCount[i] += 1;
-      }
-    }
   }
+
+  freeMatrix(transposeV, permissionCount);
+  freeMatrix(transposeUC, permissionCount);
 
   if (isSetEmpty(U, userCount) ||
       !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
