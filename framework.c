@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define MAX_FILE_NAME_SIZE 128
-#define MAX_ROLES 2500
+#define MAX_ROLES 1000
 
 FILE *openFile(char *fileName, char *mode);
 
@@ -19,8 +19,6 @@ void freeMatrix(int **upaMatrix, int userCount);
 int **readUPAMatrix(FILE *f, int userCount, int permissionCount);
 
 int **copyMatrix(int **matrix, int rows, int cols);
-
-int **transposeMatrix(int **matrix, int rows, int cols);
 
 int isSubset(int *uc, int *p, int size);
 
@@ -84,10 +82,14 @@ int main() {
   int roleCount = concurrentProcessingFramework(
       upaMatrix, userCount, permissionCount, mrcUser, mrcPermission, dataset);
 
-  printf("Number of roles = %d\n", roleCount);
-
   freeMatrix(upaMatrix, userCount);
   free(dataset);
+
+  if (roleCount != -1) {
+    printf("Number of roles = %d\n", roleCount);
+  }
+
+  return 0;
 }
 
 FILE *openFile(char *fileName, char *mode) {
@@ -180,17 +182,6 @@ int **copyMatrix(int **matrix, int rows, int cols) {
     }
   }
   return copy;
-}
-
-int **transposeMatrix(int **matrix, int rows, int cols) {
-  int **transpose = (int **)malloc(cols * sizeof(int *));
-  for (int i = 0; i < cols; i++) {
-    transpose[i] = (int *)malloc(rows * sizeof(int));
-    for (int j = 0; j < rows; j++) {
-      transpose[i][j] = matrix[j][i];
-    }
-  }
-  return transpose;
 }
 
 int isSubset(int *a, int *b, int size) {
@@ -290,15 +281,14 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   for (int i = 0; i < permissionCount; i++) {
     permRoleCount[i] = 0;
   }
-  int **uaMatrix, **paMatrix;
-  uaMatrix = (int **)malloc(userCount * sizeof(int *));
+  int **uaMatrix = (int **)malloc(userCount * sizeof(int *));
   for (int i = 0; i < userCount; i++) {
     uaMatrix[i] = (int *)malloc(MAX_ROLES * sizeof(int));
     for (int j = 0; j < MAX_ROLES; j++) {
       uaMatrix[i][j] = 0;
     }
   }
-  paMatrix = (int **)malloc(permissionCount * sizeof(int *));
+  int **paMatrix = (int **)malloc(permissionCount * sizeof(int *));
   for (int i = 0; i < permissionCount; i++) {
     paMatrix[i] = (int *)malloc(MAX_ROLES * sizeof(int));
     for (int j = 0; j < MAX_ROLES; j++) {
@@ -312,12 +302,12 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   // Phase 1
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1 && userRoleCount[i] < mrcUser - 1) {
-        int *U = (int *)malloc(userCount * sizeof(int));
+      if (UC[i][j] == 1 &&
+          (userRoleCount[i] < mrcUser - 1 || permRoleCount[j] < mrcPerm - 1)) {
+        int U[userCount], P[permissionCount];
         for (int k = 0; k < userCount; k++) {
           U[k] = 0;
         }
-        int *P = (int *)malloc(permissionCount * sizeof(int));
         for (int k = 0; k < permissionCount; k++) {
           P[k] = 0;
         }
@@ -335,39 +325,6 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                 uaMatrix, paMatrix, userCount, permissionCount,
                                 &roleCount);
         }
-
-        free(U);
-        free(P);
-      }
-    }
-  }
-  for (int j = 0; j < permissionCount; j++) {
-    for (int i = 0; i < userCount; i++) {
-      if (UC[i][j] == 1 && permRoleCount[j] < mrcPerm - 1) {
-        int *U = (int *)malloc(userCount * sizeof(int));
-        for (int k = 0; k < userCount; k++) {
-          U[k] = 0;
-        }
-        int *P = (int *)malloc(permissionCount * sizeof(int));
-        for (int k = 0; k < permissionCount; k++) {
-          P[k] = 0;
-        }
-        int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
-
-        if (vertex < userCount) {
-          formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                            userRoleCount, permRoleCount, uaMatrix, paMatrix,
-                            userCount, permissionCount, &roleCount);
-        } else if (vertex >= userCount &&
-                   vertex < userCount + permissionCount) {
-          dualFormRoleProcedure(vertex - userCount, U, P, UC, upaMatrix,
-                                mrcUser, mrcUser, userRoleCount, permRoleCount,
-                                uaMatrix, paMatrix, userCount, permissionCount,
-                                &roleCount);
-        }
-
-        free(U);
-        free(P);
       }
     }
   }
@@ -375,12 +332,12 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   // Phase 2
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1 && userRoleCount[i] == mrcUser - 1) {
-        int *U = (int *)malloc(userCount * sizeof(int));
+      if (UC[i][j] == 1 && (userRoleCount[i] == mrcUser - 1 ||
+                            permRoleCount[j] == mrcPerm - 1)) {
+        int U[userCount], P[permissionCount];
         for (int k = 0; k < userCount; k++) {
           U[k] = 0;
         }
-        int *P = (int *)malloc(permissionCount * sizeof(int));
         for (int k = 0; k < permissionCount; k++) {
           P[k] = 0;
         }
@@ -423,9 +380,6 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   &roleCount);
           }
         }
-
-        free(U);
-        free(P);
       }
     }
   }
@@ -554,33 +508,49 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
                        int **uaMatrix, int **paMatrix, int userCount,
                        int permissionCount, int *roleCount) {
 
+  int tempUserRoleCount[userCount];
+  for (int i = 0; i < userCount; i++) {
+    tempUserRoleCount[i] = userRoleCount[i];
+  }
+  int tempPermRoleCount[permissionCount];
+  for (int i = 0; i < permissionCount; i++) {
+    tempPermRoleCount[i] = permRoleCount[i];
+  }
   U[v] = 1;
-  userRoleCount[v] += 1;
+  tempUserRoleCount[v] += 1;
+
   for (int i = 0; i < permissionCount; i++) {
     int p = UC[v][i];
-    if (p == 1 && permRoleCount[i] < mrcPerm - 1) {
+    if (p == 1 && tempPermRoleCount[i] <= mrcPerm - 1) {
       P[i] = 1;
-      permRoleCount[i] += 1;
+      tempPermRoleCount[i] += 1;
     }
   }
 
   for (int i = 0; i < userCount; i++) {
-    if (i != v && userRoleCount[i] < mrcUser - 1 &&
+    if (i != v && tempUserRoleCount[i] < mrcUser - 1 &&
         isSubset(P, V[i], permissionCount) &&
         hasElement(UC[i], P, permissionCount)) {
       U[i] = 1;
-      userRoleCount[i] += 1;
-    } else if (userRoleCount[i] == mrcUser - 1 &&
+      tempUserRoleCount[i] += 1;
+    } else if (tempUserRoleCount[i] == mrcUser - 1 &&
                isSubset(P, V[i], permissionCount) &&
                isSubset(UC[i], P, permissionCount)) {
       U[i] = 1;
-      userRoleCount[i] += 1;
+      tempUserRoleCount[i] += 1;
     }
   }
 
   if (isSetEmpty(P, permissionCount) ||
       !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
     return;
+  }
+
+  for (int i = 0; i < userCount; i++) {
+    userRoleCount[i] = tempUserRoleCount[i];
+  }
+  for (int i = 0; i < permissionCount; i++) {
+    permRoleCount[i] = tempPermRoleCount[i];
   }
 
   *roleCount += 1;
@@ -595,30 +565,47 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int *permRoleCount, int **uaMatrix, int **paMatrix,
                            int userCount, int permissionCount, int *roleCount) {
 
+  int tempPermRoleCount[permissionCount];
+  for (int i = 0; i < permissionCount; i++) {
+    tempPermRoleCount[i] = permRoleCount[i];
+  }
+  int tempUserRoleCount[userCount];
+  for (int i = 0; i < userCount; i++) {
+    tempUserRoleCount[i] = userRoleCount[i];
+  }
   P[v] = 1;
-  permRoleCount[v] += 1;
+  tempPermRoleCount[v] += 1;
+
   for (int i = 0; i < userCount; i++) {
     int p = UC[i][v];
-    if (p == 1 && userRoleCount[i] < mrcUser - 1) {
+    if (p == 1 && tempUserRoleCount[i] <= mrcUser - 1) {
       U[i] = 1;
-      userRoleCount[i] += 1;
+      tempUserRoleCount[i] += 1;
     }
   }
 
-  int **transposeV = transposeMatrix(V, userCount, permissionCount);
-  int **transposeUC = transposeMatrix(UC, userCount, permissionCount);
+  int **transposeV = (int **)malloc(permissionCount * sizeof(int *));
+  int **transposeUC = (int **)malloc(permissionCount * sizeof(int *));
+  for (int i = 0; i < permissionCount; i++) {
+    transposeV[i] = (int *)malloc(userCount * sizeof(int));
+    transposeUC[i] = (int *)malloc(userCount * sizeof(int));
+    for (int j = 0; j < userCount; j++) {
+      transposeV[i][j] = V[j][i];
+      transposeUC[i][j] = UC[j][i];
+    }
+  }
 
   for (int i = 0; i < permissionCount; i++) {
-    if (i != v && permRoleCount[i] < mrcPerm - 1 &&
+    if (i != v && tempPermRoleCount[i] < mrcPerm - 1 &&
         isSubset(U, transposeV[i], userCount) &&
         hasElement(transposeUC[i], U, userCount)) {
       P[i] = 1;
-      permRoleCount[i] += 1;
-    } else if (permRoleCount[i] == mrcPerm - 1 &&
+      tempPermRoleCount[i] += 1;
+    } else if (tempPermRoleCount[i] == mrcPerm - 1 &&
                isSubset(U, transposeV[i], userCount) &&
                isSubset(transposeUC[i], U, userCount)) {
       P[i] = 1;
-      permRoleCount[i] += 1;
+      tempPermRoleCount[i] += 1;
     }
   }
 
@@ -628,6 +615,13 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
   if (isSetEmpty(U, userCount) ||
       !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
     return;
+  }
+
+  for (int i = 0; i < userCount; i++) {
+    userRoleCount[i] = tempUserRoleCount[i];
+  }
+  for (int i = 0; i < permissionCount; i++) {
+    permRoleCount[i] = tempPermRoleCount[i];
   }
 
   *roleCount += 1;
