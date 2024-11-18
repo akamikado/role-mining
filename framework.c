@@ -29,13 +29,16 @@ int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount);
 int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
                                               int permissionCount);
 
+int hasUncoveredEdges(int **UC, int userCount, int permissionCount);
+
 int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   int permissionCount, int mrcUser,
                                   int mrcPermission, char *dataset);
 
 void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
 
-int uniqueRole(int *role, int **matrix, int rows, int cols);
+int uniqueRole(int *U, int *P, int **uaMatrix, int **paMatrix, int userCount,
+               int roleCount, int permissionCount);
 
 int isSetEmpty(int *a, int size);
 
@@ -43,10 +46,11 @@ void addRoletoUA(int **uaMatrix, int *U, int userCount, int roleCount);
 
 void addRoletoPA(int **paMatrix, int *P, int permissionCount, int roleCount);
 
-void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
-                       int mrcPerm, int *userRoleCount, int *permRoleCount,
-                       int **uaMatrix, int **paMatrix, int userCount,
-                       int permissionCount, int *roleCount);
+void formRoleProcedure(int v, int userCount, int permissionCount,
+                       int U[userCount], int P[permissionCount], int **UC,
+                       int **V, int mrcUser, int mrcPerm, int *userRoleCount,
+                       int *permRoleCount, int **uaMatrix, int **paMatrix,
+                       int *roleCount);
 
 void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int mrcUser, int mrcPerm, int *userRoleCount,
@@ -238,7 +242,7 @@ int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount) {
 int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
                                               int permissionCount) {
   int vertex = -1;
-  int max = -1;
+  int max = 0;
 
   for (int i = 0; i < userCount; i++) {
     int count = 0;
@@ -265,8 +269,18 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
       vertex = j + userCount;
     }
   }
-
   return vertex;
+}
+
+int hasUncoveredEdges(int **UC, int userCount, int permissionCount) {
+  for (int i = 0; i < userCount; i++) {
+    for (int j = 0; j < permissionCount; j++) {
+      if (UC[i][j] == 1) {
+        return 1;
+      }
+    }
+  }
+  return 0;
 }
 
 // Alogrithm 4
@@ -299,153 +313,114 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
 
   int roleCount = 0;
 
+  int i = 0, j = 0;
+
   // Phase 1
-  for (int i = 0; i < userCount; i++) {
-    for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1 &&
-          (userRoleCount[i] < mrcUser - 1 || permRoleCount[j] < mrcPerm - 1)) {
-        int U[userCount], P[permissionCount];
-        for (int k = 0; k < userCount; k++) {
-          U[k] = 0;
-        }
+  while (hasUncoveredEdges(UC, userCount, permissionCount)) {
+    if (UC[i][j] == 1 &&
+        (userRoleCount[i] < mrcUser - 1 || permRoleCount[j] < mrcPerm - 1)) {
+      int U[userCount], P[permissionCount];
+      for (int k = 0; k < userCount; k++) {
+        U[k] = 0;
+      }
+      for (int k = 0; k < permissionCount; k++) {
+        P[k] = 0;
+      }
+
+      int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
+
+      if (vertex < userCount) {
+        formRoleProcedure(vertex, userCount, permissionCount, U, P, UC,
+                          upaMatrix, mrcUser, mrcPerm, userRoleCount,
+                          permRoleCount, uaMatrix, paMatrix, &roleCount);
+      } else if (vertex >= userCount && vertex < userCount + permissionCount) {
+        dualFormRoleProcedure(vertex - userCount, U, P, UC, upaMatrix, mrcPerm,
+                              mrcPerm, userRoleCount, permRoleCount, uaMatrix,
+                              paMatrix, userCount, permissionCount, &roleCount);
+      }
+    }
+    i = (i + 1) % userCount;
+    j = (j + 1) % permissionCount;
+  }
+
+  i = 0;
+  j = 0;
+
+  // Phase 2
+  while (hasUncoveredEdges(UC, userCount, permissionCount)) {
+    if (UC[i][j] == 1 &&
+        (userRoleCount[i] == mrcUser - 1 || permRoleCount[j] == mrcPerm - 1)) {
+      int U[userCount], P[permissionCount];
+      for (int k = 0; k < userCount; k++) {
+        U[k] = 0;
+      }
+      for (int k = 0; k < permissionCount; k++) {
+        P[k] = 0;
+      }
+
+      int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
+                                                             permissionCount);
+
+      if (vertex < userCount) {
+        int condition = 1;
         for (int k = 0; k < permissionCount; k++) {
-          P[k] = 0;
+          if (UC[vertex][k] == 1) {
+            P[k] = 1;
+            if (permRoleCount[k] > mrcPerm - 1) {
+              condition = 0;
+            }
+          }
         }
-
-        int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
-
-        if (vertex < userCount) {
-          formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                            userRoleCount, permRoleCount, uaMatrix, paMatrix,
-                            userCount, permissionCount, &roleCount);
-        } else if (vertex >= userCount &&
-                   vertex < userCount + permissionCount) {
-          dualFormRoleProcedure(vertex - userCount, U, P, UC, upaMatrix,
-                                mrcPerm, mrcPerm, userRoleCount, permRoleCount,
-                                uaMatrix, paMatrix, userCount, permissionCount,
+        if (condition) {
+          formRoleProcedure(vertex, userCount, permissionCount, U, P, UC,
+                            upaMatrix, mrcUser, mrcPerm, userRoleCount,
+                            permRoleCount, uaMatrix, paMatrix, &roleCount);
+        }
+      } else if (vertex >= userCount && vertex < userCount + permissionCount) {
+        vertex -= userCount;
+        int condition = 1;
+        for (int k = 0; k < userCount; k++) {
+          printf("%d\n", UC[k][vertex]);
+          if (UC[k][vertex] == 1) {
+            U[k] = 1;
+            if (userRoleCount[k] > mrcUser - 1) {
+              condition = 0;
+            }
+          }
+        }
+        if (condition) {
+          dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
+                                userRoleCount, permRoleCount, uaMatrix,
+                                paMatrix, userCount, permissionCount,
                                 &roleCount);
         }
       }
     }
+    i = (i + 1) % userCount;
+    j = (j + 1) % permissionCount;
   }
 
-  // Phase 2
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1 && (userRoleCount[i] == mrcUser - 1 ||
-                            permRoleCount[j] == mrcPerm - 1)) {
-        int U[userCount], P[permissionCount];
-        for (int k = 0; k < userCount; k++) {
-          U[k] = 0;
-        }
-        for (int k = 0; k < permissionCount; k++) {
-          P[k] = 0;
-        }
-
-        int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
-                                                               permissionCount);
-
-        if (vertex < userCount) {
-          int condition = 1;
-          for (int k = 0; k < permissionCount; k++) {
-            if (UC[vertex][k] == 1) {
-              P[k] = 1;
-              if (permRoleCount[k] > mrcPerm - 1) {
-                condition = 0;
-              }
-            }
-          }
-          if (condition) {
-            formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                              userRoleCount, permRoleCount, uaMatrix, paMatrix,
-                              userCount, permissionCount, &roleCount);
-          }
-
-        } else if (vertex >= userCount &&
-                   vertex < userCount + permissionCount) {
-          vertex -= userCount;
-          int condition = 1;
-          for (int k = 0; k < userCount; k++) {
-            if (UC[k][vertex] == 1) {
-              U[k] = 1;
-              if (userRoleCount[k] > mrcUser - 1) {
-                condition = 0;
-              }
-            }
-          }
-          if (condition) {
-            dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                                  userRoleCount, permRoleCount, uaMatrix,
-                                  paMatrix, userCount, permissionCount,
-                                  &roleCount);
-          }
-        }
+      if (UC[i][j] == 1) {
+        printf("The given set of constraints cannot be enforced\n");
+        roleCount = -1;
+        break;
       }
     }
-  }
-  for (int j = 0; j < permissionCount; j++) {
-    for (int i = 0; i < userCount; i++) {
-      if (UC[i][j] == 1 && permRoleCount[j] == mrcPerm - 1) {
-        int *U = (int *)malloc(userCount * sizeof(int));
-        for (int k = 0; k < userCount; k++) {
-          U[k] = 0;
-        }
-        int *P = (int *)malloc(permissionCount * sizeof(int));
-        for (int k = 0; k < permissionCount; k++) {
-          P[k] = 0;
-        }
-
-        int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
-                                                               permissionCount);
-
-        if (vertex < userCount) {
-          int condition = 1;
-          for (int k = 0; k < permissionCount; k++) {
-            if (UC[vertex][k] == 1) {
-              P[k] = 1;
-              if (permRoleCount[k] > mrcPerm - 1) {
-                condition = 0;
-              }
-            }
-          }
-          if (condition) {
-            formRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                              userRoleCount, permRoleCount, uaMatrix, paMatrix,
-                              userCount, permissionCount, &roleCount);
-          }
-        } else {
-          vertex -= userCount;
-          int condition = 1;
-          for (int k = 0; k < userCount; k++) {
-            if (UC[k][vertex] == 1) {
-              U[k] = 1;
-              if (userRoleCount[k] > mrcUser - 1) {
-                condition = 0;
-              }
-            }
-          }
-          if (condition) {
-            dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                                  userRoleCount, permRoleCount, uaMatrix,
-                                  paMatrix, userCount, permissionCount,
-                                  &roleCount);
-          }
-        }
-
-        free(U);
-        free(P);
-      }
+    if (roleCount == -1) {
+      break;
     }
   }
 
-  // TODO: Check if roles did not meet the constraints
+  if (roleCount != -1) {
+    char uaFile[128], paFile[128];
+    sprintf(uaFile, "%s_UA.txt", dataset);
+    sprintf(paFile, "%s_PA.txt", dataset);
 
-  char uaFile[128], paFile[128];
-  sprintf(uaFile, "%s_UA.txt", dataset);
-  sprintf(paFile, "%s_PA.txt", dataset);
-
-  writeMatrixToFile(uaMatrix, userCount, roleCount, uaFile);
-  writeMatrixTransposeToFile(paMatrix, permissionCount, roleCount, paFile);
+    writeMatrixToFile(uaMatrix, userCount, roleCount, uaFile);
+    writeMatrixTransposeToFile(paMatrix, permissionCount, roleCount, paFile);
+  }
 
   freeMatrix(uaMatrix, userCount);
   freeMatrix(paMatrix, permissionCount);
@@ -466,16 +441,23 @@ void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
   }
 }
 
-int uniqueRole(int *role, int **matrix, int rows, int cols) {
-  for (int j = 0; j < cols; j++) {
-    int isDuplicate = 1;
-    for (int i = 0; i < rows; i++) {
-      if (role[i] != matrix[i][j]) {
-        isDuplicate = 0;
+int uniqueRole(int *U, int *P, int **uaMatrix, int **paMatrix, int userCount,
+               int roleCount, int permissionCount) {
+  for (int i = 0; i < roleCount; i++) {
+    int flag = 1;
+    for (int j = 0; j < userCount; j++) {
+      if (uaMatrix[j][i] != U[j]) {
+        flag = 0;
         break;
       }
     }
-    if (isDuplicate) {
+    for (int j = 0; j < permissionCount; j++) {
+      if (paMatrix[j][i] != P[j]) {
+        flag = 0;
+        break;
+      }
+    }
+    if (flag) {
       return 0;
     }
   }
@@ -503,10 +485,11 @@ void addRoletoPA(int **paMatrix, int *P, int permissionCount, int roleCount) {
   }
 }
 
-void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
-                       int mrcPerm, int *userRoleCount, int *permRoleCount,
-                       int **uaMatrix, int **paMatrix, int userCount,
-                       int permissionCount, int *roleCount) {
+void formRoleProcedure(int v, int userCount, int permissionCount,
+                       int U[userCount], int P[permissionCount], int **UC,
+                       int **V, int mrcUser, int mrcPerm, int *userRoleCount,
+                       int *permRoleCount, int **uaMatrix, int **paMatrix,
+                       int *roleCount) {
 
   int tempUserRoleCount[userCount];
   for (int i = 0; i < userCount; i++) {
@@ -521,7 +504,7 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
 
   for (int i = 0; i < permissionCount; i++) {
     int p = UC[v][i];
-    if (p == 1 && tempPermRoleCount[i] <= mrcPerm - 1) {
+    if (p == 1 && tempPermRoleCount[i] < mrcPerm - 1) {
       P[i] = 1;
       tempPermRoleCount[i] += 1;
     }
@@ -542,7 +525,8 @@ void formRoleProcedure(int v, int *U, int *P, int **UC, int **V, int mrcUser,
   }
 
   if (isSetEmpty(P, permissionCount) ||
-      !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
+      !uniqueRole(U, P, uaMatrix, paMatrix, userCount, *roleCount,
+                  permissionCount)) {
     return;
   }
 
@@ -564,7 +548,6 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int mrcUser, int mrcPerm, int *userRoleCount,
                            int *permRoleCount, int **uaMatrix, int **paMatrix,
                            int userCount, int permissionCount, int *roleCount) {
-
   int tempPermRoleCount[permissionCount];
   for (int i = 0; i < permissionCount; i++) {
     tempPermRoleCount[i] = permRoleCount[i];
@@ -577,8 +560,8 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
   tempPermRoleCount[v] += 1;
 
   for (int i = 0; i < userCount; i++) {
-    int p = UC[i][v];
-    if (p == 1 && tempUserRoleCount[i] <= mrcUser - 1) {
+    int u = UC[i][v];
+    if (u == 1 && tempUserRoleCount[i] < mrcUser - 1) {
       U[i] = 1;
       tempUserRoleCount[i] += 1;
     }
@@ -612,11 +595,19 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
   freeMatrix(transposeV, permissionCount);
   freeMatrix(transposeUC, permissionCount);
 
-  if (isSetEmpty(U, userCount) ||
-      !uniqueRole(U, uaMatrix, userCount, *roleCount)) {
+  if (isSetEmpty(P, permissionCount) ||
+      !uniqueRole(U, P, uaMatrix, paMatrix, userCount, permissionCount,
+                  *roleCount)) {
+    printf("dual form role procedure\n");
+    int numberOfUncoveredEdges = 0;
+    for (int i = 0; i < userCount; i++) {
+      for (int j = 0; j < permissionCount; j++) {
+        numberOfUncoveredEdges += UC[i][j];
+      }
+    }
+    printf("%d\n", numberOfUncoveredEdges);
     return;
   }
-
   for (int i = 0; i < userCount; i++) {
     userRoleCount[i] = tempUserRoleCount[i];
   }
