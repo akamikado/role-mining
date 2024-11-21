@@ -226,7 +226,7 @@ Vertex selectVertexWithHeuristic(int **UC, int userCount, int permissionCount,
   /* printf("user count: %d\n", userCount); */
   /* printf("permission count: %d\n", permissionCount); */
 
-  Vertex v = {-1, USER};
+  Vertex v = {-1, PERMISSION};
 
   for (int j = 0; j < permissionCount; j++) {
     int uncoveredEdges = 0;
@@ -260,6 +260,8 @@ Vertex selectVertexWithHeuristic(int **UC, int userCount, int permissionCount,
     }
   }
 
+  printf("Count: %d\n", min);
+
   return v;
 }
 
@@ -283,9 +285,11 @@ Vertex selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
         count++;
       }
     }
+    /* printf("User: %d count: %d\n", i, count); */
     if (count > max) {
       max = count;
       v.index = i;
+      printf("User: %d chosen for count %d\n", i, count);
     }
   }
 
@@ -300,10 +304,12 @@ Vertex selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
         count++;
       }
     }
+    /* printf("Permission: %d count: %d\n", j, count); */
     if (count > max) {
       max = count;
       v.index = j;
       v.type = PERMISSION;
+      printf("Permission: %d chosen for count %d\n", j, count);
     }
   }
   return v;
@@ -352,6 +358,8 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
 
   int i = 0, j = 0;
 
+  int loopCount = 0;
+
   int remainingUncoveredEdges = 0;
 
   for (int i = 0; i < userCount; i++) {
@@ -361,8 +369,14 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   }
 
   // Phase 1
+  printf("Phase 1\n");
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
+      loopCount++;
+      if (loopCount % 1000 == 0) {
+        printf("Phase 1 Loop %d: Remaining uncovered edges: %d\n", loopCount,
+               remainingUncoveredEdges);
+      }
       if (remainingUncoveredEdges == 0) {
         break;
       }
@@ -381,6 +395,7 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
             mrcUser, mrcPerm);
 
         if (vertex.index == -1) {
+          printf("No vertex selected\n");
           continue;
         }
 
@@ -406,10 +421,17 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
 
   i = 0;
   j = 0;
+  loopCount = 0;
 
   // Phase 2
+  printf("Phase 2\n");
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
+      loopCount++;
+      if (loopCount % 1000 == 0) {
+        printf("Phase 2 Loop %d: Remaining uncovered edges: %d\n", loopCount,
+               remainingUncoveredEdges);
+      }
       if (remainingUncoveredEdges == 0) {
         break;
       }
@@ -427,8 +449,10 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
         Vertex vertex = selectVertexWithMaxUncoveredIncidentEdges(
             UC, userCount, permissionCount, userRoleCount, permRoleCount,
             mrcUser, mrcPerm);
+        printf("Vertex: %d type %d\n", vertex.index, vertex.type);
 
         if (vertex.index == -1) {
+          printf("No vertex selected\n");
           break;
         }
 
@@ -450,6 +474,7 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
         } else if (vertex.type == PERMISSION) {
           int condition = 1;
           for (int k = 0; k < userCount; k++) {
+            printf("%d\n", UC[k][vertex.index]);
             if (UC[k][vertex.index] == 1) {
               U[k] = 1;
               if (userRoleCount[k] > mrcUser - 1) {
@@ -478,13 +503,16 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
       if (UC[i][j] == 1) {
+        printf("The given set of constraints cannot be enforced\n");
         roleCount = -1;
         for (int k = 0; k < userCount; k++) {
           for (int l = 0; l < permissionCount; l++) {
             if (UC[k][l] == 1) {
               if (userRoleCount[k] < mrcUser - 1) {
+                printf("User %d\n", k);
               }
               if (permRoleCount[l] < mrcPerm - 1) {
+                printf("Permission %d\n", l);
               }
             }
           }
@@ -526,7 +554,6 @@ int modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
       }
     }
   }
-
   return modifications;
 }
 
@@ -594,11 +621,13 @@ void formRoleProcedure(int v, int userCount, int permissionCount,
 
   for (int i = 0; i < permissionCount; i++) {
     int p = UC[v][i];
+    printf("%d ", p);
     if (p == 1 && tempPermRoleCount[i] < mrcPerm - 1) {
       tempP[i] = 1;
       tempPermRoleCount[i] += 1;
     }
   }
+  printf("\n");
 
   for (int i = 0; i < userCount; i++) {
     if (i != v && tempUserRoleCount[i] < mrcUser - 1 &&
@@ -615,15 +644,49 @@ void formRoleProcedure(int v, int userCount, int permissionCount,
   }
 
   if (isSetEmpty(tempP, permissionCount)) {
+    printf("U: \n");
+    for (int i = 0; i < userCount; i++) {
+      printf("%d ", tempU[i]);
+    }
+    printf("\nP: \n");
+    for (int i = 0; i < permissionCount; i++) {
+      printf("%d ", tempP[i]);
+    }
+    printf("\nUser role count: \n");
+    for (int i = 0; i < userCount; i++) {
+      printf("%d ", tempUserRoleCount[i]);
+    }
+    printf("\nPermission role count: \n");
+    for (int i = 0; i < permissionCount; i++) {
+      printf("%d ", tempPermRoleCount[i]);
+    }
+    printf("\n");
     free(tempPermRoleCount);
     free(tempUserRoleCount);
     free(tempU);
     free(tempP);
+    perror("Empty P set in formRoleProcedure");
     return;
   }
 
   if (!uniqueRole(tempU, tempP, uaMatrix, paMatrix, userCount, *roleCount,
                   permissionCount)) {
+    /* for (int i = 0; i < userCount; i++) { */
+    /*   printf("%d ", U[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < permissionCount; i++) { */
+    /*   printf("%d ", tempP[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < userCount; i++) { */
+    /*   printf("%d ", tempUserRoleCount[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < permissionCount; i++) { */
+    /*   printf("%d ", tempPermRoleCount[i]); */
+    /* } */
+    /* printf("\n"); */
     free(tempPermRoleCount);
     free(tempUserRoleCount);
     free(tempU);
@@ -700,15 +763,49 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
   freeMatrix(transposeUC, permissionCount);
 
   if (isSetEmpty(tempU, userCount)) {
+    printf("U: \n");
+    for (int i = 0; i < userCount; i++) {
+      printf("%d ", tempU[i]);
+    }
+    printf("\nP: \n");
+    for (int i = 0; i < permissionCount; i++) {
+      printf("%d ", tempP[i]);
+    }
+    printf("\nUser role count: \n");
+    for (int i = 0; i < userCount; i++) {
+      printf("%d ", tempUserRoleCount[i]);
+    }
+    printf("\nPermission role count: \n");
+    for (int i = 0; i < permissionCount; i++) {
+      printf("%d ", tempPermRoleCount[i]);
+    }
+    printf("\n");
     free(tempPermRoleCount);
     free(tempUserRoleCount);
     free(tempU);
     free(tempP);
+    perror("Empty U set in dualFormRoleProcedure");
     return;
   }
 
   if (!uniqueRole(tempU, tempP, uaMatrix, paMatrix, userCount, *roleCount,
                   permissionCount)) {
+    /* for (int i = 0; i < userCount; i++) { */
+    /*   printf("%d ", tempU[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < permissionCount; i++) { */
+    /*   printf("%d ", tempP[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < userCount; i++) { */
+    /*   printf("%d ", tempUserRoleCount[i]); */
+    /* } */
+    /* printf("\n"); */
+    /* for (int i = 0; i < permissionCount; i++) { */
+    /*   printf("%d ", tempPermRoleCount[i]); */
+    /* } */
+    /* printf("\n"); */
     free(tempPermRoleCount);
     free(tempUserRoleCount);
     free(tempU);
