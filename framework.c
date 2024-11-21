@@ -24,10 +24,22 @@ int isSubset(int *uc, int *p, int size);
 
 int hasElement(int *uc, int *p, int size);
 
-int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount);
+enum VertexType { USER, PERMISSION };
 
-int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
-                                              int permissionCount);
+typedef struct Vertex {
+  int index;
+  enum VertexType type;
+} Vertex;
+
+Vertex selectVertexWithHeuristic(int **UC, int mrcUser, int mrcPerm,
+                                 int *userRoleCount, int *permRoleCount,
+                                 int userCount, int permissionCount);
+
+Vertex selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
+                                                 int permissionCount,
+                                                 int *userRoleCount,
+                                                 int *permRoleCount,
+                                                 int mrcUser, int mrcPerm);
 
 int hasUncoveredEdges(int **UC, int userCount, int permissionCount);
 
@@ -35,7 +47,7 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
                                   int permissionCount, int mrcUser,
                                   int mrcPermission, char *dataset);
 
-void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
+int modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount);
 
 int uniqueRole(int *U, int *P, int **uaMatrix, int **paMatrix, int userCount,
                int roleCount, int permissionCount);
@@ -206,45 +218,65 @@ int hasElement(int *a, int *b, int size) {
   return 0;
 }
 
-int selectVertexWithHeuristic(int **UC, int userCount, int permissionCount) {
-  int vertex = -1;
+Vertex selectVertexWithHeuristic(int **UC, int userCount, int permissionCount,
+                                 int *userRoleCount, int *permRoleCount,
+                                 int mrcUser, int mrcPerm) {
   int min = userCount + permissionCount;
 
-  for (int i = 0; i < userCount; i++) {
-    int count = 0;
-    for (int j = 0; j < permissionCount; j++) {
-      if (UC[i][j] == 1) {
-        count++;
-      }
-    }
-    if (count > 0 && count < min) {
-      min = count;
-      vertex = i;
-    }
-  }
+  /* printf("user count: %d\n", userCount); */
+  /* printf("permission count: %d\n", permissionCount); */
+
+  Vertex v = {-1, USER};
 
   for (int j = 0; j < permissionCount; j++) {
-    int count = 0;
+    int uncoveredEdges = 0;
     for (int i = 0; i < userCount; i++) {
-      if (UC[i][j] == 1) {
-        count++;
+      if (UC[i][j] == 1 && userRoleCount[i] < mrcUser - 1) {
+        uncoveredEdges++;
       }
     }
-    if (count > 0 && (count < min || (count == min && vertex >= userCount))) {
-      min = count;
-      vertex = j + userCount;
+
+    if (uncoveredEdges > 0 && uncoveredEdges < min) {
+      min = uncoveredEdges;
+      v.index = j;
+      v.type = PERMISSION;
     }
   }
 
-  return vertex;
+  for (int i = 0; i < userCount; i++) {
+    int uncoveredEdges = 0;
+    for (int j = 0; j < permissionCount; j++) {
+      if (UC[i][j] == 1 && permRoleCount[j] < mrcPerm - 1) {
+        uncoveredEdges++;
+      }
+    }
+
+    if (uncoveredEdges > 0 &&
+        (uncoveredEdges < min ||
+         (uncoveredEdges == min && v.type == PERMISSION))) {
+      min = uncoveredEdges;
+      v.index = i;
+      v.type = USER;
+    }
+  }
+
+  return v;
 }
 
-int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
-                                              int permissionCount) {
-  int vertex = -1;
+Vertex selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
+                                                 int permissionCount,
+                                                 int *userRoleCount,
+                                                 int *permRoleCount, int mrUser,
+                                                 int mrcPerm) {
   int max = 0;
 
+  Vertex v = {-1, USER};
+
   for (int i = 0; i < userCount; i++) {
+    if (userRoleCount[i] >= mrUser - 1) {
+      continue;
+    }
+
     int count = 0;
     for (int j = 0; j < permissionCount; j++) {
       if (UC[i][j] == 1) {
@@ -253,11 +285,15 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
     }
     if (count > max) {
       max = count;
-      vertex = i;
+      v.index = i;
     }
   }
 
   for (int j = 0; j < permissionCount; j++) {
+    if (permRoleCount[j] >= mrcPerm - 1) {
+      continue;
+    }
+
     int count = 0;
     for (int i = 0; i < userCount; i++) {
       if (UC[i][j] == 1) {
@@ -266,10 +302,11 @@ int selectVertexWithMaxUncoveredIncidentEdges(int **UC, int userCount,
     }
     if (count > max) {
       max = count;
-      vertex = j + userCount;
+      v.index = j;
+      v.type = PERMISSION;
     }
   }
-  return vertex;
+  return v;
 }
 
 int hasUncoveredEdges(int **UC, int userCount, int permissionCount) {
@@ -315,96 +352,143 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
 
   int i = 0, j = 0;
 
+  int remainingUncoveredEdges = 0;
+
+  for (int i = 0; i < userCount; i++) {
+    for (int j = 0; j < permissionCount; j++) {
+      remainingUncoveredEdges += UC[i][j];
+    }
+  }
+
   // Phase 1
-  while (hasUncoveredEdges(UC, userCount, permissionCount)) {
-    if (UC[i][j] == 1 &&
-        (userRoleCount[i] < mrcUser - 1 || permRoleCount[j] < mrcPerm - 1)) {
-      int U[userCount], P[permissionCount];
-      for (int k = 0; k < userCount; k++) {
-        U[k] = 0;
+  for (int i = 0; i < userCount; i++) {
+    for (int j = 0; j < permissionCount; j++) {
+      if (remainingUncoveredEdges == 0) {
+        break;
       }
-      for (int k = 0; k < permissionCount; k++) {
-        P[k] = 0;
-      }
+      if (UC[i][j] == 1 &&
+          (userRoleCount[i] < mrcUser - 1 || permRoleCount[j] < mrcPerm - 1)) {
+        int U[userCount], P[permissionCount];
+        for (int k = 0; k < userCount; k++) {
+          U[k] = 0;
+        }
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
 
-      int vertex = selectVertexWithHeuristic(UC, userCount, permissionCount);
+        Vertex vertex = selectVertexWithHeuristic(
+            UC, userCount, permissionCount, userRoleCount, permRoleCount,
+            mrcUser, mrcPerm);
 
-      if (vertex < userCount) {
-        formRoleProcedure(vertex, userCount, permissionCount, U, P, UC,
-                          upaMatrix, mrcUser, mrcPerm, userRoleCount,
-                          permRoleCount, uaMatrix, paMatrix, &roleCount);
-      } else if (vertex >= userCount && vertex < userCount + permissionCount) {
-        dualFormRoleProcedure(vertex - userCount, U, P, UC, upaMatrix, mrcPerm,
-                              mrcPerm, userRoleCount, permRoleCount, uaMatrix,
-                              paMatrix, userCount, permissionCount, &roleCount);
+        if (vertex.index == -1) {
+          continue;
+        }
+
+        if (vertex.type == USER) {
+          formRoleProcedure(vertex.index, userCount, permissionCount, U, P, UC,
+                            upaMatrix, mrcUser, mrcPerm, userRoleCount,
+                            permRoleCount, uaMatrix, paMatrix, &roleCount);
+        } else if (vertex.type == PERMISSION) {
+          dualFormRoleProcedure(vertex.index, U, P, UC, upaMatrix, mrcPerm,
+                                mrcPerm, userRoleCount, permRoleCount, uaMatrix,
+                                paMatrix, userCount, permissionCount,
+                                &roleCount);
+        }
+        remainingUncoveredEdges =
+            remainingUncoveredEdges -
+            modifyUC(UC, U, P, userCount, permissionCount);
       }
     }
-    i = (i + 1) % userCount;
-    j = (j + 1) % permissionCount;
+    if (remainingUncoveredEdges == 0) {
+      break;
+    }
   }
 
   i = 0;
   j = 0;
 
   // Phase 2
-  while (hasUncoveredEdges(UC, userCount, permissionCount)) {
-    if (UC[i][j] == 1 &&
-        (userRoleCount[i] == mrcUser - 1 || permRoleCount[j] == mrcPerm - 1)) {
-      int U[userCount], P[permissionCount];
-      for (int k = 0; k < userCount; k++) {
-        U[k] = 0;
-      }
-      for (int k = 0; k < permissionCount; k++) {
-        P[k] = 0;
+  for (int i = 0; i < userCount; i++) {
+    for (int j = 0; j < permissionCount; j++) {
+      if (remainingUncoveredEdges == 0) {
+        break;
       }
 
-      int vertex = selectVertexWithMaxUncoveredIncidentEdges(UC, userCount,
-                                                             permissionCount);
-
-      if (vertex < userCount) {
-        int condition = 1;
-        for (int k = 0; k < permissionCount; k++) {
-          if (UC[vertex][k] == 1) {
-            P[k] = 1;
-            if (permRoleCount[k] > mrcPerm - 1) {
-              condition = 0;
-            }
-          }
-        }
-        if (condition) {
-          formRoleProcedure(vertex, userCount, permissionCount, U, P, UC,
-                            upaMatrix, mrcUser, mrcPerm, userRoleCount,
-                            permRoleCount, uaMatrix, paMatrix, &roleCount);
-        }
-      } else if (vertex >= userCount && vertex < userCount + permissionCount) {
-        vertex -= userCount;
-        int condition = 1;
+      if (UC[i][j] == 1 && (userRoleCount[i] == mrcUser - 1 ||
+                            permRoleCount[j] == mrcPerm - 1)) {
+        int U[userCount], P[permissionCount];
         for (int k = 0; k < userCount; k++) {
-          printf("%d\n", UC[k][vertex]);
-          if (UC[k][vertex] == 1) {
-            U[k] = 1;
-            if (userRoleCount[k] > mrcUser - 1) {
-              condition = 0;
+          U[k] = 0;
+        }
+        for (int k = 0; k < permissionCount; k++) {
+          P[k] = 0;
+        }
+
+        Vertex vertex = selectVertexWithMaxUncoveredIncidentEdges(
+            UC, userCount, permissionCount, userRoleCount, permRoleCount,
+            mrcUser, mrcPerm);
+
+        if (vertex.index == -1) {
+          break;
+        }
+
+        if (vertex.type == USER) {
+          int condition = 1;
+          for (int k = 0; k < permissionCount; k++) {
+            if (UC[vertex.index][k] == 1) {
+              P[k] = 1;
+              if (permRoleCount[k] > mrcPerm - 1) {
+                condition = 0;
+              }
             }
           }
+          if (condition) {
+            formRoleProcedure(vertex.index, userCount, permissionCount, U, P,
+                              UC, upaMatrix, mrcUser, mrcPerm, userRoleCount,
+                              permRoleCount, uaMatrix, paMatrix, &roleCount);
+          }
+        } else if (vertex.type == PERMISSION) {
+          int condition = 1;
+          for (int k = 0; k < userCount; k++) {
+            if (UC[k][vertex.index] == 1) {
+              U[k] = 1;
+              if (userRoleCount[k] > mrcUser - 1) {
+                condition = 0;
+              }
+            }
+          }
+          if (condition) {
+            dualFormRoleProcedure(vertex.index, U, P, UC, upaMatrix, mrcUser,
+                                  mrcPerm, userRoleCount, permRoleCount,
+                                  uaMatrix, paMatrix, userCount,
+                                  permissionCount, &roleCount);
+          }
         }
-        if (condition) {
-          dualFormRoleProcedure(vertex, U, P, UC, upaMatrix, mrcUser, mrcPerm,
-                                userRoleCount, permRoleCount, uaMatrix,
-                                paMatrix, userCount, permissionCount,
-                                &roleCount);
-        }
+
+        remainingUncoveredEdges =
+            remainingUncoveredEdges -
+            modifyUC(UC, U, P, userCount, permissionCount);
       }
     }
-    i = (i + 1) % userCount;
-    j = (j + 1) % permissionCount;
+    if (remainingUncoveredEdges == 0) {
+      break;
+    }
   }
 
   for (int i = 0; i < userCount; i++) {
     for (int j = 0; j < permissionCount; j++) {
       if (UC[i][j] == 1) {
-        printf("The given set of constraints cannot be enforced\n");
         roleCount = -1;
+        for (int k = 0; k < userCount; k++) {
+          for (int l = 0; l < permissionCount; l++) {
+            if (UC[k][l] == 1) {
+              if (userRoleCount[k] < mrcUser - 1) {
+              }
+              if (permRoleCount[l] < mrcPerm - 1) {
+              }
+            }
+          }
+        }
         break;
       }
     }
@@ -429,16 +513,21 @@ int concurrentProcessingFramework(int **upaMatrix, int userCount,
   return roleCount;
 }
 
-void modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
+int modifyUC(int **UC, int *U, int *P, int userCount, int permissionCount) {
+  int modifications = 0;
+
   for (int i = 0; i < userCount; i++) {
     if (U[i] == 1) {
       for (int j = 0; j < permissionCount; j++) {
-        if (P[j] == 1) {
+        if (P[j] == 1 && UC[i][j] == 1) {
           UC[i][j] = 0;
+          modifications++;
         }
       }
     }
   }
+
+  return modifications;
 }
 
 int uniqueRole(int *U, int *P, int **uaMatrix, int **paMatrix, int userCount,
@@ -491,78 +580,93 @@ void formRoleProcedure(int v, int userCount, int permissionCount,
                        int *permRoleCount, int **uaMatrix, int **paMatrix,
                        int *roleCount) {
 
-  int tempUserRoleCount[userCount];
-  for (int i = 0; i < userCount; i++) {
-    tempUserRoleCount[i] = userRoleCount[i];
-  }
-  int tempPermRoleCount[permissionCount];
-  for (int i = 0; i < permissionCount; i++) {
-    tempPermRoleCount[i] = permRoleCount[i];
-  }
-  U[v] = 1;
+  int *tempPermRoleCount = (int *)malloc(permissionCount * sizeof(int));
+  int *tempUserRoleCount = (int *)malloc(userCount * sizeof(int));
+  int *tempU = (int *)malloc(userCount * sizeof(int));
+  int *tempP = (int *)malloc(permissionCount * sizeof(int));
+  memcpy(tempPermRoleCount, permRoleCount, permissionCount * sizeof(int));
+  memcpy(tempUserRoleCount, userRoleCount, userCount * sizeof(int));
+  memcpy(tempU, U, userCount * sizeof(int));
+  memcpy(tempP, P, permissionCount * sizeof(int));
+
+  tempU[v] = 1;
   tempUserRoleCount[v] += 1;
 
   for (int i = 0; i < permissionCount; i++) {
     int p = UC[v][i];
     if (p == 1 && tempPermRoleCount[i] < mrcPerm - 1) {
-      P[i] = 1;
+      tempP[i] = 1;
       tempPermRoleCount[i] += 1;
     }
   }
 
   for (int i = 0; i < userCount; i++) {
     if (i != v && tempUserRoleCount[i] < mrcUser - 1 &&
-        isSubset(P, V[i], permissionCount) &&
-        hasElement(UC[i], P, permissionCount)) {
-      U[i] = 1;
+        isSubset(tempP, V[i], permissionCount) &&
+        hasElement(UC[i], tempP, permissionCount)) {
+      tempU[i] = 1;
       tempUserRoleCount[i] += 1;
     } else if (tempUserRoleCount[i] == mrcUser - 1 &&
-               isSubset(P, V[i], permissionCount) &&
-               isSubset(UC[i], P, permissionCount)) {
-      U[i] = 1;
+               isSubset(tempP, V[i], permissionCount) &&
+               isSubset(UC[i], tempP, permissionCount)) {
+      tempU[i] = 1;
       tempUserRoleCount[i] += 1;
     }
   }
 
-  if (isSetEmpty(P, permissionCount) ||
-      !uniqueRole(U, P, uaMatrix, paMatrix, userCount, *roleCount,
-                  permissionCount)) {
+  if (isSetEmpty(tempP, permissionCount)) {
+    free(tempPermRoleCount);
+    free(tempUserRoleCount);
+    free(tempU);
+    free(tempP);
     return;
   }
 
-  for (int i = 0; i < userCount; i++) {
-    userRoleCount[i] = tempUserRoleCount[i];
+  if (!uniqueRole(tempU, tempP, uaMatrix, paMatrix, userCount, *roleCount,
+                  permissionCount)) {
+    free(tempPermRoleCount);
+    free(tempUserRoleCount);
+    free(tempU);
+    free(tempP);
+    return;
   }
-  for (int i = 0; i < permissionCount; i++) {
-    permRoleCount[i] = tempPermRoleCount[i];
-  }
+
+  memcpy(userRoleCount, tempUserRoleCount, userCount * sizeof(int));
+  memcpy(permRoleCount, tempPermRoleCount, permissionCount * sizeof(int));
+  memcpy(U, tempU, userCount * sizeof(int));
+  memcpy(P, tempP, permissionCount * sizeof(int));
 
   *roleCount += 1;
 
-  modifyUC(UC, U, P, userCount, permissionCount);
   addRoletoUA(uaMatrix, U, userCount, *roleCount);
   addRoletoPA(paMatrix, P, permissionCount, *roleCount);
+
+  free(tempPermRoleCount);
+  free(tempUserRoleCount);
+  free(tempU);
+  free(tempP);
 }
 
 void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
                            int mrcUser, int mrcPerm, int *userRoleCount,
                            int *permRoleCount, int **uaMatrix, int **paMatrix,
                            int userCount, int permissionCount, int *roleCount) {
-  int tempPermRoleCount[permissionCount];
-  for (int i = 0; i < permissionCount; i++) {
-    tempPermRoleCount[i] = permRoleCount[i];
-  }
-  int tempUserRoleCount[userCount];
-  for (int i = 0; i < userCount; i++) {
-    tempUserRoleCount[i] = userRoleCount[i];
-  }
-  P[v] = 1;
+  int *tempPermRoleCount = (int *)malloc(permissionCount * sizeof(int));
+  int *tempUserRoleCount = (int *)malloc(userCount * sizeof(int));
+  int *tempU = (int *)malloc(userCount * sizeof(int));
+  int *tempP = (int *)malloc(permissionCount * sizeof(int));
+  memcpy(tempPermRoleCount, permRoleCount, permissionCount * sizeof(int));
+  memcpy(tempUserRoleCount, userRoleCount, userCount * sizeof(int));
+  memcpy(tempU, U, userCount * sizeof(int));
+  memcpy(tempP, P, permissionCount * sizeof(int));
+
+  tempP[v] = 1;
   tempPermRoleCount[v] += 1;
 
   for (int i = 0; i < userCount; i++) {
     int u = UC[i][v];
     if (u == 1 && tempUserRoleCount[i] < mrcUser - 1) {
-      U[i] = 1;
+      tempU[i] = 1;
       tempUserRoleCount[i] += 1;
     }
   }
@@ -580,14 +684,14 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
 
   for (int i = 0; i < permissionCount; i++) {
     if (i != v && tempPermRoleCount[i] < mrcPerm - 1 &&
-        isSubset(U, transposeV[i], userCount) &&
-        hasElement(transposeUC[i], U, userCount)) {
-      P[i] = 1;
+        isSubset(tempU, transposeV[i], userCount) &&
+        hasElement(transposeUC[i], tempU, userCount)) {
+      tempP[i] = 1;
       tempPermRoleCount[i] += 1;
     } else if (tempPermRoleCount[i] == mrcPerm - 1 &&
-               isSubset(U, transposeV[i], userCount) &&
-               isSubset(transposeUC[i], U, userCount)) {
-      P[i] = 1;
+               isSubset(tempU, transposeV[i], userCount) &&
+               isSubset(transposeUC[i], tempU, userCount)) {
+      tempP[i] = 1;
       tempPermRoleCount[i] += 1;
     }
   }
@@ -595,29 +699,35 @@ void dualFormRoleProcedure(int v, int *U, int *P, int **UC, int **V,
   freeMatrix(transposeV, permissionCount);
   freeMatrix(transposeUC, permissionCount);
 
-  if (isSetEmpty(P, permissionCount) ||
-      !uniqueRole(U, P, uaMatrix, paMatrix, userCount, permissionCount,
-                  *roleCount)) {
-    printf("dual form role procedure\n");
-    int numberOfUncoveredEdges = 0;
-    for (int i = 0; i < userCount; i++) {
-      for (int j = 0; j < permissionCount; j++) {
-        numberOfUncoveredEdges += UC[i][j];
-      }
-    }
-    printf("%d\n", numberOfUncoveredEdges);
+  if (isSetEmpty(tempU, userCount)) {
+    free(tempPermRoleCount);
+    free(tempUserRoleCount);
+    free(tempU);
+    free(tempP);
     return;
   }
-  for (int i = 0; i < userCount; i++) {
-    userRoleCount[i] = tempUserRoleCount[i];
+
+  if (!uniqueRole(tempU, tempP, uaMatrix, paMatrix, userCount, *roleCount,
+                  permissionCount)) {
+    free(tempPermRoleCount);
+    free(tempUserRoleCount);
+    free(tempU);
+    free(tempP);
+    return;
   }
-  for (int i = 0; i < permissionCount; i++) {
-    permRoleCount[i] = tempPermRoleCount[i];
-  }
+
+  memcpy(userRoleCount, tempUserRoleCount, userCount * sizeof(int));
+  memcpy(permRoleCount, tempPermRoleCount, permissionCount * sizeof(int));
+  memcpy(U, tempU, userCount * sizeof(int));
+  memcpy(P, tempP, permissionCount * sizeof(int));
 
   *roleCount += 1;
 
-  modifyUC(UC, U, P, userCount, permissionCount);
-  addRoletoUA(uaMatrix, U, userCount, *roleCount);
-  addRoletoPA(paMatrix, P, permissionCount, *roleCount);
+  addRoletoUA(uaMatrix, tempU, userCount, *roleCount);
+  addRoletoPA(paMatrix, tempP, permissionCount, *roleCount);
+
+  free(tempPermRoleCount);
+  free(tempUserRoleCount);
+  free(tempU);
+  free(tempP);
 }
